@@ -3,8 +3,9 @@
 Run Hugging Face ASR models at a pinned commit inside isolated, reproducible
 worker environments — without ever changing your own project's dependencies.
 
-> Status: **Milestone 0 — scaffold**. The CLI shell exists; model commands land
-> milestone by milestone.
+> Status: **Milestone 1 — schemas and store**. Recipes, reports, evidence and
+> the enforced status ladder are in place; model commands land milestone by
+> milestone.
 
 ## Why
 
@@ -43,10 +44,32 @@ Evidence is tracked as a status ladder (`inspected` → `resolved` → ... →
 `accuracy_checked`); a rung is only ever set by code that ran the matching
 check.
 
+## Schemas and status proof
+
+`ethirun.schemas` defines frozen Pydantic models for `Recipe`, `Report`,
+`Evidence`, `CheckRecord` and `StatusLadder`. Every rung from `inspected` to
+`accuracy_checked` is present. The only state allowed without proof is
+`untested`:
+
+```python
+from ethirun.schemas import RungResult, RungState
+
+RungResult(state=RungState.PASSED)  # raises: requires a check record
+```
+
+Because `recipe.toml` keeps the documented `[status]` strings, a verified rung
+also carries its proof in an additive `[status_checks.<rung>]` table. A
+hand-edited recipe cannot promote a rung without that proof. Reports nest the
+same checks under `status.<rung>.check` in JSON.
+
+`ethirun.store` provides TOML/JSON round trips plus `RecipeStore`, which writes
+`recipes/<org>__<model>/<sha>/{recipe.toml,report.json}` and refuses to save a
+recipe and report that disagree.
+
 ## Roadmap
 
 - [x] **M0** Scaffold: uv, ruff, mypy strict, pytest, CI
-- [ ] M1 Schemas and store
+- [x] **M1** Schemas and store: recipe/report/evidence, enforced ladder, TOML/JSON
 - [ ] M2 Worker and protocol
 - [ ] M3 Inspector
 - [ ] M4 Resolver and env manager
