@@ -1,0 +1,92 @@
+[project]
+name = "ethirun"
+version = "0.1.0"
+description = "Run Hugging Face ASR models in isolated, reproducible worker environments."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+license = { text = "MIT" }
+authors = [{ name = "Ethi Model Runner contributors" }]
+keywords = ["asr", "huggingface", "reproducibility", "speech"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.11",
+  "Typing :: Typed",
+]
+
+# Host dependencies only. Model runtimes (torch, transformers, ...) must never
+# be added here: they belong in per-recipe worker virtualenvs.
+dependencies = [
+  "rich>=13.7,<15",
+  "typer>=0.15,<1",
+]
+
+[project.scripts]
+ethirun = "ethirun.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.11,<2",
+  "pytest>=8.2,<10",
+  "ruff>=0.8,<1",
+]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "worker"]
+extend-exclude = ["recipes", ".venv"]
+
+[tool.ruff.lint]
+select = [
+  "A",    # builtins shadowing
+  "ANN",  # annotations
+  "B",    # bugbear
+  "C4",   # comprehensions
+  "DTZ",  # timezone-aware datetimes
+  "E",    # pycodestyle errors
+  "F",    # pyflakes
+  "I",    # import sorting
+  "N",    # naming
+  "PT",   # pytest style
+  "RET",  # return simplifications
+  "RUF",  # ruff-specific
+  "SIM",  # simplifications
+  "TID",  # tidy imports
+  "UP",   # pyupgrade
+  "W",    # pycodestyle warnings
+]
+ignore = [
+  "ANN401", # Typer callbacks legitimately accept arbitrary option values
+  "RUF001", # Amharic text uses non-ASCII punctuation legitimately
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ethirun"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+warn_unused_configs = true
+# "worker" joins this list in M2, once its stdlib-only modules exist.
+files = ["src", "tests"]
+exclude = ["\\.venv", "recipes"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+testpaths = ["tests"]
+pythonpath = ["src"]
+xfail_strict = true
