@@ -1,0 +1,10 @@
+{
+  "architectures": ["WhisperForConditionalGeneration"],
+  "model_type": "whisper",
+  "transformers_version": "4.40.0",
+  "d_model": 32,
+  "encoder_layers": 1,
+  "decoder_layers": 1,
+  "num_mel_bins": 80,
+  "vocab_size": 32
+}

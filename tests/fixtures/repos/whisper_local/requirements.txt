@@ -1,0 +1,4 @@
+# Fixture runtime packages
+transformers>=4.40
+torch>=2.2
+numpy

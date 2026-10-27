@@ -1,0 +1,6 @@
+{
+  "architectures": ["Wav2Vec2ForCTC"],
+  "model_type": "wav2vec2",
+  "transformers_version": "4.38.2",
+  "vocab_size": 32
+}

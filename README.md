@@ -3,9 +3,9 @@
 Run Hugging Face ASR models at a pinned commit inside isolated, reproducible
 worker environments — without ever changing your own project's dependencies.
 
-> Status: **Milestone 2 — worker and protocol**. The CLI shell, schemas/store,
-> and isolated worker process with host client are in place; model commands land
-> milestone by milestone.
+> Status: **Milestone 3 — inspector**. The CLI can inspect remote or local ASR
+> repositories, emit an evidence report, and select an adapter without
+> downloading weights or executing repository code.
 
 ## Why
 
@@ -90,13 +90,35 @@ Tests launch the real worker with the deterministic fake adapter and cover
 success, structured errors, timeouts, crashes, protocol violations, noisy
 stdout, startup timeout, and hard kills.
 
+## Inspection
+
+```bash
+ethirun inspect openai/whisper-tiny --json
+ethirun inspect org/model@<sha> --output report.json
+ethirun inspect local/whisper --local-dir tests/fixtures/repos/whisper_local
+```
+
+Stage 0 resolves a remote revision to a full commit SHA through `HfApi` and
+downloads only an allowlist: config/generation/preprocessor files, tokenizer and
+vocab files, README, requirements, safetensors index, and `.py` files under a
+256 KiB cap. Weight files are listed in the inventory but never downloaded. A
+local directory is pinned by a deterministic 40-hex content digest, or by an
+explicit `--revision`.
+
+Stage 1 parses every downloaded `.py` with `ast`; nothing is imported or
+executed. It classifies stdlib/local/third-party imports, maps modules to PyPI
+names, compares third-party packages against `requirements.txt`, flags
+`auto_map` as remote code, and selects `transformers_whisper`,
+`transformers_ctc`, or a named unsupported family with a confidence score.
+Results are typed `Report` JSON including `inventory` and `scan` sections, with
+the `inspected` rung backed by a `stage0.inspect` check record.
+
 ## Roadmap
 
 - [x] **M0** Scaffold: uv, ruff, mypy strict, pytest, CI
 - [x] **M1** Schemas and store: recipe/report/evidence, enforced ladder, TOML/JSON
 - [x] **M2** Worker and protocol: stdlib-only runtime, host client, fake adapter, timeouts
-- [ ] M3 Inspector
-- [ ] M3 Inspector
+- [x] **M3** Inspector: pinned SHA, allowlisted files, AST-only scan, adapter evidence
 - [ ] M4 Resolver and env manager
 - [ ] M5 Probes and adapters
 - [ ] M6 Real models

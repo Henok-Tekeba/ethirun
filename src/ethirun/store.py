@@ -111,8 +111,12 @@ def read_recipe(path: Path) -> Recipe:
 
 
 def dumps_report_json(report: Report) -> str:
-    """Serialize a report to stable, indented JSON."""
-    return report.model_dump_json(by_alias=True, exclude_none=True, indent=2) + "\n"
+    """Serialize a report to stable, indented JSON.
+
+    ``None`` values are kept on purpose: report JSON supports null, and exact
+    round trips matter for evidence review.
+    """
+    return report.model_dump_json(by_alias=True, indent=2) + "\n"
 
 
 def loads_report_json(text: str) -> Report:

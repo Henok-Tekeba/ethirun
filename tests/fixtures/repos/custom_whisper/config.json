@@ -1,0 +1,8 @@
+{
+  "architectures": ["WhisperForConditionalGeneration"],
+  "model_type": "whisper",
+  "auto_map": {
+    "AutoConfig": "configuration_custom.CustomConfig",
+    "AutoModelForSpeechSeq2Seq": "modeling_custom.CustomWhisper"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "metadata": {"format": "pt"},
+  "weight_map": {
+    "model.encoder.conv1.weight": "model.safetensors",
+    "model.decoder.embed_tokens.weight": "model.safetensors"
+  }
+}

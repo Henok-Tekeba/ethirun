@@ -18,6 +18,7 @@ classifiers = [
 # Host dependencies only. Model runtimes (torch, transformers, ...) must never
 # be added here: they belong in per-recipe worker virtualenvs.
 dependencies = [
+  "huggingface-hub>=0.28,<2",
   "pydantic>=2.9,<3",
   "rich>=13.7,<15",
   "tomli-w>=1.0,<2",
@@ -45,7 +46,7 @@ package = true
 line-length = 100
 target-version = "py311"
 src = ["src", "tests", "worker"]
-extend-exclude = ["recipes", ".venv"]
+extend-exclude = ["recipes", ".venv", "tests/fixtures"]
 
 [tool.ruff.lint]
 select = [
@@ -84,7 +85,7 @@ warn_unreachable = true
 warn_unused_configs = true
 mypy_path = "worker"
 files = ["src", "tests", "worker"]
-exclude = ["\\.venv", "recipes"]
+exclude = ["\\.venv", "recipes", "tests/fixtures"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
