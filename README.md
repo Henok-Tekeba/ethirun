@@ -3,9 +3,9 @@
 Run Hugging Face ASR models at a pinned commit inside isolated, reproducible
 worker environments — without ever changing your own project's dependencies.
 
-> Status: **Milestone 1 — schemas and store**. Recipes, reports, evidence and
-> the enforced status ladder are in place; model commands land milestone by
-> milestone.
+> Status: **Milestone 2 — worker and protocol**. The CLI shell, schemas/store,
+> and isolated worker process with host client are in place; model commands land
+> milestone by milestone.
 
 ## Why
 
@@ -66,11 +66,36 @@ same checks under `status.<rung>.check` in JSON.
 `recipes/<org>__<model>/<sha>/{recipe.toml,report.json}` and refuses to save a
 recipe and report that disagree.
 
+## Worker protocol
+
+The worker is a separate process (one venv per recipe later) speaking one JSON
+object per line:
+
+```text
+<- {"id":0,"ok":true,"result":{"protocol":1,"worker_version":"0.1.0",...}}
+-> {"id":1,"op":"probe","name":"meta_build","args":{"model_dir":"..."}}
+<- {"id":1,"ok":true,"result":{"verdict":"pass",...}}
+-> {"id":2,"op":"shutdown"}
+```
+
+Before any adapter is imported, the worker duplicates fd 1 for protocol frames
+and points fd 1 plus `sys.stdout` at stderr. Library `print` calls and raw
+`os.write(1, ...)` therefore become logs instead of corrupting the stream.
+`ethirun.client.WorkerClient` drains stderr continuously, enforces per-request
+deadlines by killing the process group, and exposes `terminate()`/`kill()` for
+hard shutdown. Errors travel as `{type, message, traceback}` and become
+`WorkerOperationError` on the host.
+
+Tests launch the real worker with the deterministic fake adapter and cover
+success, structured errors, timeouts, crashes, protocol violations, noisy
+stdout, startup timeout, and hard kills.
+
 ## Roadmap
 
 - [x] **M0** Scaffold: uv, ruff, mypy strict, pytest, CI
 - [x] **M1** Schemas and store: recipe/report/evidence, enforced ladder, TOML/JSON
-- [ ] M2 Worker and protocol
+- [x] **M2** Worker and protocol: stdlib-only runtime, host client, fake adapter, timeouts
+- [ ] M3 Inspector
 - [ ] M3 Inspector
 - [ ] M4 Resolver and env manager
 - [ ] M5 Probes and adapters

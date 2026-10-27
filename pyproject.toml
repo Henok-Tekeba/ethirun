@@ -75,20 +75,20 @@ ignore = [
 "tests/**" = ["ANN", "S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["ethirun"]
+known-first-party = ["ethirun", "ethirun_worker"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
 warn_unreachable = true
 warn_unused_configs = true
-# "worker" joins this list in M2, once its stdlib-only modules exist.
-files = ["src", "tests"]
+mypy_path = "worker"
+files = ["src", "tests", "worker"]
 exclude = ["\\.venv", "recipes"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "worker"]
 xfail_strict = true
