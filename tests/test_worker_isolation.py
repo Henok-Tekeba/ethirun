@@ -11,7 +11,13 @@ import ast
 import sys
 from pathlib import Path
 
+from ethirun import WORKER_VERSION
+from ethirun_worker import WORKER_VERSION as RUNTIME_WORKER_VERSION
 from tests.worker_harness import WORKER_DIR
+
+
+def test_worker_versions_match() -> None:
+    assert WORKER_VERSION == RUNTIME_WORKER_VERSION
 
 
 def _import_roots(path: Path) -> set[str]:

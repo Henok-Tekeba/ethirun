@@ -3,9 +3,9 @@
 Run Hugging Face ASR models at a pinned commit inside isolated, reproducible
 worker environments — without ever changing your own project's dependencies.
 
-> Status: **Milestone 3 — inspector**. The CLI can inspect remote or local ASR
-> repositories, emit an evidence report, and select an adapter without
-> downloading weights or executing repository code.
+> Status: **Milestone 4 — resolver and env manager**. Inspected models can be
+> compiled into bounded candidate lockfiles and built into cached, isolated
+> worker environments without changing the host environment.
 
 ## Why
 
@@ -113,13 +113,47 @@ names, compares third-party packages against `requirements.txt`, flags
 Results are typed `Report` JSON including `inventory` and `scan` sections, with
 the `inspected` rung backed by a `stage0.inspect` check record.
 
+## Resolution and isolated environments
+
+`ethirun.resolver.Resolver` compiles the three-candidate matrix with
+`uv pip compile` from adapter hints plus the `transformers_version` hint:
+
+| Candidate | Python | Date bound |
+| --- | --- | --- |
+| A | 3.11 | reference commit date + 120 days |
+| B | 3.12 (configurable) | same date bound |
+| C | 3.11 | unbounded |
+
+Every attempt is kept, including uv's conflict message. Successful candidates
+write `requirements-A/B/C.lock`; the first success is also copied to
+`requirements.lock`. Failures do not stop later candidates.
+
+`ethirun.envs.EnvManager` then runs:
+
+```text
+uv venv ~/.ethirun/envs/<env_hash> --python 3.11
+uv pip sync --python <env>/bin/python requirements.lock
+uv pip check --python <env>/bin/python
+```
+
+`env_hash` is SHA-256 over lockfile bytes, Python version, and worker version.
+A completion marker makes a matching environment a no-op on the next build: uv
+is not invoked and the environment is never patched in place. Corrupt or partial
+environments are deleted and rebuilt. The manager passes `--python` explicitly
+for every sync/check so the host `.venv` can never be the install target.
+
+Tests use locally built wheels with `--no-index --find-links`, so resolution and
+env construction are exercised for real without network access. A dedicated
+test snapshots the host distribution list before and after a build and requires
+it to be identical.
+
 ## Roadmap
 
 - [x] **M0** Scaffold: uv, ruff, mypy strict, pytest, CI
 - [x] **M1** Schemas and store: recipe/report/evidence, enforced ladder, TOML/JSON
 - [x] **M2** Worker and protocol: stdlib-only runtime, host client, fake adapter, timeouts
 - [x] **M3** Inspector: pinned SHA, allowlisted files, AST-only scan, adapter evidence
-- [ ] M4 Resolver and env manager
+- [x] **M4** Resolver and env manager: candidate locks, cached isolated venvs, uv check
 - [ ] M5 Probes and adapters
 - [ ] M6 Real models
 
