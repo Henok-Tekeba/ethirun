@@ -85,11 +85,19 @@ warn_unreachable = true
 warn_unused_configs = true
 mypy_path = "worker"
 files = ["src", "tests", "worker"]
-exclude = ["\\.venv", "recipes", "tests/fixtures"]
+exclude = ["\\.venv", "recipes", "tests/fixtures", "tests/scripts"]
+
+[[tool.mypy.overrides]]
+module = ["ethirun_worker.*"]
+ignore_missing_imports = true
+disable_error_code = ["import-not-found"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = [
+  "tiny_models: requires a worker venv with torch/transformers and ETHIRUN_RUN_TINY_MODEL_TESTS=1",
+]
 testpaths = ["tests"]
 pythonpath = ["src", "worker"]
 xfail_strict = true

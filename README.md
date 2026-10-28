@@ -3,9 +3,9 @@
 Run Hugging Face ASR models at a pinned commit inside isolated, reproducible
 worker environments — without ever changing your own project's dependencies.
 
-> Status: **Milestone 4 — resolver and env manager**. Inspected models can be
-> compiled into bounded candidate lockfiles and built into cached, isolated
-> worker environments without changing the host environment.
+> Status: **Milestone 5 — probes and adapters**. Both transformer ASR families
+> now run P1–P5, load real weights, and transcribe through the worker; tiny
+> random-weight models are exercised end to end in a separate CI job.
 
 ## Why
 
@@ -72,7 +72,7 @@ The worker is a separate process (one venv per recipe later) speaking one JSON
 object per line:
 
 ```text
-<- {"id":0,"ok":true,"result":{"protocol":1,"worker_version":"0.1.0",...}}
+<- {"id":0,"ok":true,"result":{"protocol":1,"worker_version":"0.2.0",...}}
 -> {"id":1,"op":"probe","name":"meta_build","args":{"model_dir":"..."}}
 <- {"id":1,"ok":true,"result":{"verdict":"pass",...}}
 -> {"id":2,"op":"shutdown"}
@@ -147,6 +147,36 @@ env construction are exercised for real without network access. A dedicated
 test snapshots the host distribution list before and after a build and requires
 it to be identical.
 
+## Probes and adapters
+
+The worker exposes five probes, all executed inside the recipe env:
+
+| Probe | Check |
+| --- | --- |
+| P1 `imports` | import torch and transformers, report versions/devices |
+| P2 `architecture` | resolve the class named by `config.json` without executing repo code |
+| P3 `meta_build` | build the model under `torch.device("meta")` and count parameters |
+| P4 `processor` | load `AutoProcessor`/tokenizer from local small files |
+| P5 `safetensors` | fetch safetensors headers over HTTP and compare names/shapes with the meta state dict |
+
+`transformers_whisper` and `transformers_ctc` adapters share the pipeline path:
+audio is read with soundfile, downmixed and linearly resampled to 16 kHz, then
+passed as a numpy array to the transformers ASR pipeline. No ffmpeg is needed.
+Whisper passes an optional language through `generate_kwargs`; CTC ignores it.
+All runtime imports are lazy, so the worker source stays importable on
+`PYTHONPATH` without installing torch in the host.
+
+`ethirun.verifier.verify_worker` runs P1–P5, load and a smoke transcription and
+sets `imports`, `constructs`, `weights_compatible`, `loads`, and `transcribes`
+only from the operation that produced each observation. A P5 mismatch is
+recorded as failed/investigate but does not block load and smoke.
+
+CI has a separate `tiny-models` job: it creates a disposable worker venv,
+installs CPU torch/transformers/soundfile there (never in the host), builds tiny
+random-weight Whisper and CTC models inside that venv, and requires both
+pipelines to finish with non-empty text and a `transcribes = passed` rung.
+The normal host test job remains free of model runtimes.
+
 ## Roadmap
 
 - [x] **M0** Scaffold: uv, ruff, mypy strict, pytest, CI
@@ -154,7 +184,7 @@ it to be identical.
 - [x] **M2** Worker and protocol: stdlib-only runtime, host client, fake adapter, timeouts
 - [x] **M3** Inspector: pinned SHA, allowlisted files, AST-only scan, adapter evidence
 - [x] **M4** Resolver and env manager: candidate locks, cached isolated venvs, uv check
-- [ ] M5 Probes and adapters
+- [x] **M5** Probes and adapters: P1–P5, whisper/CTC pipelines, verifier, tiny-model CI
 - [ ] M6 Real models
 
 ## Host dependency policy

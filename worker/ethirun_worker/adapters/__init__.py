@@ -6,9 +6,12 @@ from collections.abc import Callable
 
 from ethirun_worker.adapters.base import WorkerAdapter
 from ethirun_worker.adapters.fake import FakeAdapter
+from ethirun_worker.adapters.transformers_asr import CTCAdapter, WhisperAdapter
 
 _ADAPTERS: dict[str, Callable[[], WorkerAdapter]] = {
     FakeAdapter.name: FakeAdapter,
+    WhisperAdapter.name: WhisperAdapter,
+    CTCAdapter.name: CTCAdapter,
 }
 
 

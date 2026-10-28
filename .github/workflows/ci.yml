@@ -81,3 +81,48 @@ jobs:
             exit 1
           fi
           echo "Host environment is clean of model runtimes."
+
+  tiny-models:
+    name: tiny models through transcribes
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ETHIRUN_RUN_TINY_MODEL_TESTS: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.12.1"
+          enable-cache: true
+
+      - name: Install Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync host environment from lockfile
+        run: uv sync --locked
+
+      - name: Create disposable worker venv
+        run: uv venv "$RUNNER_TEMP/tiny-worker" --python 3.11
+
+      - name: Install CPU torch in the worker venv only
+        run: |
+          uv pip install --python "$RUNNER_TEMP/tiny-worker/bin/python" \
+            --index-url https://download.pytorch.org/whl/cpu \
+            "torch>=2.2"
+
+      - name: Install transformers and audio runtime in the worker venv only
+        run: |
+          uv pip install --python "$RUNNER_TEMP/tiny-worker/bin/python" \
+            "transformers>=4.40,<6" \
+            "soundfile>=0.12"
+
+      - name: Run tiny-model probes and transcription
+        env:
+          ETHIRUN_TINY_WORKER_PYTHON: ${{ runner.temp }}/tiny-worker/bin/python
+        run: uv run pytest -q -m tiny_models

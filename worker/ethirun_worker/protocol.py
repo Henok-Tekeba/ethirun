@@ -7,7 +7,7 @@ import traceback
 from typing import Any
 
 PROTOCOL_VERSION = 1
-WORKER_VERSION = "0.1.0"
+WORKER_VERSION = "0.2.0"
 
 
 class ProtocolError(Exception):
