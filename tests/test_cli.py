@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from typer.testing import CliRunner
 
@@ -9,21 +11,26 @@ from ethirun import __version__
 from ethirun.cli import app
 
 runner = CliRunner()
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    return _ANSI.sub("", text)
 
 
 def test_help_exits_successfully() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
-    assert "Usage: ethirun [OPTIONS] COMMAND [ARGS]..." in result.stdout
-    assert "isolated, reproducible worker environments" in result.stdout
+    assert "Usage: ethirun [OPTIONS] COMMAND [ARGS]..." in _plain(result.stdout)
+    assert "isolated, reproducible worker environments" in _plain(result.stdout)
 
 
 def test_no_args_shows_help() -> None:
     result = runner.invoke(app, [])
 
     assert result.exit_code == 2
-    assert "Usage: ethirun" in result.stdout
+    assert "Usage: ethirun" in _plain(result.stdout)
 
 
 def test_version_flag() -> None:
