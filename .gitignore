@@ -26,4 +26,5 @@ htmlcov/
 /*.wav
 /*.flac
 /*.m4a
+/*.parquet
 .ethirun/
