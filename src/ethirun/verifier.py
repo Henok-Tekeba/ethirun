@@ -37,6 +37,15 @@ class VerificationClient(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class ProbeResult:
+    """P1-P5 outcome, without loading weights or transcribing."""
+
+    status: StatusLadder
+    probes: dict[str, Any]
+    error: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class VerificationResult:
     """Evidence ladder plus the artifacts observed during verification."""
 
@@ -78,25 +87,20 @@ def _check(
     )
 
 
-def verify_worker(
+def run_probes(
     client: VerificationClient,
     *,
     model_dir: str,
-    audio_path: str,
     repo_id: str | None = None,
     revision: str | None = None,
-    language: str | None = None,
-    device: str = "cpu",
     now: datetime | None = None,
     probe_timeout: float | None = None,
-    transcribe_timeout: float | None = None,
-) -> VerificationResult:
-    """Run P1-P5, load and smoke transcription, recording every rung."""
+    initial_status: StatusLadder | None = None,
+) -> ProbeResult:
+    """Run P1-P5 and record imports/constructs/weights rungs."""
     ran_at = now or datetime.now(UTC)
-    status = StatusLadder.initial()
+    status = initial_status if initial_status is not None else StatusLadder.initial()
     probes: dict[str, Any] = {}
-    load_result: Any = None
-    text: str | None = None
 
     try:
         probes["imports"] = client.probe("imports", timeout=probe_timeout)
@@ -119,7 +123,7 @@ def verify_worker(
                 {"probes": probes, "error": message},
             )
         )
-        return VerificationResult(status, probes, load_result, text, message)
+        return ProbeResult(status, probes, message)
 
     status = status.with_check(
         _check(
@@ -160,7 +164,7 @@ def verify_worker(
                 {"probes": probes, "error": message},
             )
         )
-        return VerificationResult(status, probes, load_result, text, message)
+        return ProbeResult(status, probes, message)
 
     status = status.with_check(
         _check(
@@ -199,7 +203,7 @@ def verify_worker(
                 {"error": message},
             )
         )
-        return VerificationResult(status, probes, load_result, text, message)
+        return ProbeResult(status, probes, message)
 
     p5 = probes["safetensors"]
     verdict = p5.get("verdict") if isinstance(p5, dict) else None
@@ -219,6 +223,42 @@ def verify_worker(
             {"probe": p5},
         )
     )
+
+    return ProbeResult(status, probes, None)
+
+
+def verify_worker(
+    client: VerificationClient,
+    *,
+    model_dir: str,
+    audio_path: str,
+    repo_id: str | None = None,
+    revision: str | None = None,
+    language: str | None = None,
+    device: str = "cpu",
+    now: datetime | None = None,
+    probe_timeout: float | None = None,
+    transcribe_timeout: float | None = None,
+    initial_status: StatusLadder | None = None,
+) -> VerificationResult:
+    """Run P1-P5, load and smoke transcription, recording every rung."""
+    ran_at = now or datetime.now(UTC)
+    probe_result = run_probes(
+        client,
+        model_dir=model_dir,
+        repo_id=repo_id,
+        revision=revision,
+        now=ran_at,
+        probe_timeout=probe_timeout,
+        initial_status=initial_status,
+    )
+    status = probe_result.status
+    probes = probe_result.probes
+    if probe_result.error is not None:
+        return VerificationResult(status, probes, None, None, probe_result.error)
+
+    load_result: Any = None
+    text: str | None = None
 
     try:
         load_result = client.load(model_dir, device=device, timeout=probe_timeout)
@@ -273,6 +313,9 @@ def verify_worker(
 
     transcribe_state = RungState.PASSED if text.strip() else RungState.FAILED
     error = None if transcribe_state is RungState.PASSED else "transcription was empty"
+    detail: dict[str, Any] = {"text_length": len(text), "text": text}
+    if language is not None:
+        detail["language"] = language
     status = status.with_check(
         _check(
             Rung.TRANSCRIBES,
@@ -280,7 +323,7 @@ def verify_worker(
             "stage6",
             transcribe_state,
             ran_at,
-            {"text_length": len(text), "language": language},
+            detail,
         )
     )
     return VerificationResult(status, probes, load_result, text, error)

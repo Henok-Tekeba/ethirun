@@ -20,3 +20,10 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+
+# Generated/local artifacts: this repository ships the tool, not models or audio
+/recipes/
+/*.wav
+/*.flac
+/*.m4a
+.ethirun/

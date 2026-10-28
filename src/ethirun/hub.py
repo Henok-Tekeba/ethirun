@@ -8,6 +8,7 @@ with a fake hub and no network.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -35,6 +36,7 @@ class HubSnapshot:
     pipeline_tag: str | None = None
     library_name: str | None = None
     tags: tuple[str, ...] = ()
+    last_modified: datetime | None = None
 
 
 class HubClient(Protocol):
@@ -84,6 +86,7 @@ class HuggingFaceHub:
             pipeline_tag=info.pipeline_tag,
             library_name=info.library_name,
             tags=tuple(info.tags or ()),
+            last_modified=info.last_modified,
         )
 
     def download(

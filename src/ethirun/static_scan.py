@@ -348,6 +348,11 @@ def scan_python(
 
     return StaticScanResult(
         python_files=tuple(sorted(python_sources)),
+        transformers_version=(
+            config.get("transformers_version")
+            if isinstance(config.get("transformers_version"), str)
+            else None
+        ),
         remote_code=bool(auto_map),
         remote_code_reasons=tuple(remote_code_reasons),
         imports=tuple(imports),

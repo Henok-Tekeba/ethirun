@@ -58,7 +58,20 @@ def recipe_to_toml_data(recipe: Recipe) -> dict[str, Any]:
 
 def dumps_recipe_toml(recipe: Recipe) -> str:
     """Serialize a recipe to TOML text."""
-    return tomli_w.dumps(recipe_to_toml_data(recipe))
+    return tomli_w.dumps(_without_none(recipe_to_toml_data(recipe)))
+
+
+def _without_none(value: Any) -> Any:
+    """TOML has no null; recursively drop None values before writing."""
+    if isinstance(value, dict):
+        return {
+            str(key): cleaned
+            for key, item in value.items()
+            if item is not None and (cleaned := _without_none(item)) is not None
+        }
+    if isinstance(value, list):
+        return [_without_none(item) for item in value if item is not None]
+    return value
 
 
 def loads_recipe_toml(text: str) -> Recipe:

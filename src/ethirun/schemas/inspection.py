@@ -98,6 +98,7 @@ class StaticScanResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     python_files: tuple[str, ...] = ()
+    transformers_version: str | None = None
     remote_code: bool = False
     remote_code_reasons: tuple[str, ...] = ()
     imports: tuple[ImportRecord, ...] = ()

@@ -503,6 +503,9 @@ class Inspector:
                     family=scan.adapter.family,
                 ),
                 generated_at=generated_at,
+                commit_date=None
+                if snapshot is None
+                else (snapshot.last_modified.date() if snapshot.last_modified else None),
                 evidence=evidence,
                 inventory=inventory,
                 scan=scan,

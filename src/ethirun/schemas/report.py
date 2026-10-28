@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -33,6 +33,7 @@ class Report(BaseModel):
     )
     model: ModelRef
     generated_at: datetime
+    commit_date: date | None = None
     evidence: tuple[Evidence, ...] = ()
     inventory: tuple[FileRecord, ...] = ()
     scan: StaticScanResult | None = None
@@ -51,6 +52,7 @@ class Report(BaseModel):
         *,
         model: ModelRef,
         generated_at: datetime,
+        commit_date: date | None = None,
         evidence: tuple[Evidence, ...] = (),
         inventory: tuple[FileRecord, ...] = (),
         scan: StaticScanResult | None = None,
@@ -60,6 +62,7 @@ class Report(BaseModel):
         return cls(
             model=model,
             generated_at=generated_at,
+            commit_date=commit_date,
             evidence=evidence,
             inventory=inventory,
             scan=scan,

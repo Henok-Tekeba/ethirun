@@ -8,7 +8,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from ethirun.schemas import Recipe, Report, Rung, RungState, StatusLadder
+from ethirun.schemas import (
+    CheckRecord,
+    Recipe,
+    Report,
+    Rung,
+    RungState,
+    StatusLadder,
+)
 from ethirun.store import (
     RECIPE_FILENAME,
     REPORT_FILENAME,
@@ -20,7 +27,7 @@ from ethirun.store import (
     read_recipe,
     write_recipe,
 )
-from tests.factories import make_recipe, make_report
+from tests.factories import NOW, make_recipe, make_report
 
 
 def test_recipe_toml_round_trip(sample_recipe: Recipe) -> None:
@@ -50,6 +57,30 @@ def test_recipe_json_round_trip(sample_recipe: Recipe) -> None:
 
     assert loaded == sample_recipe
     assert json.loads(payload)["schema"] == 1
+
+
+def test_recipe_toml_drops_nested_none_values() -> None:
+    ladder = StatusLadder.initial().with_check(
+        CheckRecord(
+            rung=Rung.INSPECTED,
+            check="stage0.inspect",
+            stage="stage0",
+            outcome=RungState.PASSED,
+            ran_at=NOW,
+            detail={
+                "kept": "value",
+                "dropped": None,
+                "nested": {"kept": 1, "dropped": None},
+            },
+        )
+    )
+    recipe = make_recipe(status=ladder)
+
+    loaded = loads_recipe_toml(dumps_recipe_toml(recipe))
+
+    check = loaded.status.root[Rung.INSPECTED].check
+    assert check is not None
+    assert check.detail == {"kept": "value", "nested": {"kept": 1}}
 
 
 def test_report_json_round_trip(sample_report: Report) -> None:

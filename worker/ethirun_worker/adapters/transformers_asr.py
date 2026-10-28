@@ -204,8 +204,12 @@ class TransformersASRAdapter:
                 "detail": {"reason": "repository has no safetensors metadata"},
             }
 
-        local_shapes = self._meta_state_shapes(model_dir)
-        comparison = compare_state_shapes(local_shapes, remote_shapes)
+        local_shapes, tied_weights = self._meta_state_shapes(model_dir)
+        comparison = compare_state_shapes(
+            local_shapes,
+            remote_shapes,
+            tied_weights=tied_weights,
+        )
         detail = comparison.get("detail")
         if not isinstance(detail, dict):
             detail = {}
@@ -224,7 +228,11 @@ class TransformersASRAdapter:
         revision: str,
     ) -> dict[str, tuple[int, ...]]:
         from huggingface_hub import HfApi
-        from huggingface_hub.errors import EntryNotFoundError
+
+        try:
+            from huggingface_hub.errors import EntryNotFoundError
+        except ImportError:  # huggingface_hub < 0.24 keeps errors under utils
+            from huggingface_hub.utils import EntryNotFoundError  # type: ignore[attr-defined]
 
         try:
             metadata = HfApi().get_safetensors_metadata(repo_id, revision=revision)
@@ -243,7 +251,10 @@ class TransformersASRAdapter:
                 shapes[tensor_name] = tuple(tensor_info.shape)
         return shapes
 
-    def _meta_state_shapes(self, model_dir: str) -> dict[str, tuple[int, ...]]:
+    def _meta_state_shapes(
+        self,
+        model_dir: str,
+    ) -> tuple[dict[str, tuple[int, ...]], dict[str, str]]:
         import torch
         import transformers
         from transformers import AutoConfig
@@ -264,7 +275,29 @@ class TransformersASRAdapter:
 
         with torch.device("meta"):
             model = model_class(config)
-        return {name: tuple(tensor.shape) for name, tensor in model.state_dict().items()}
+        shapes = {name: tuple(tensor.shape) for name, tensor in model.state_dict().items()}
+        raw_tied = getattr(model, "_tied_weights_keys", None)
+        tied: dict[str, str] = {}
+        if isinstance(raw_tied, dict):
+            tied = {
+                str(name): str(target)
+                for name, target in raw_tied.items()
+                if isinstance(name, str) and isinstance(target, str)
+            }
+        elif isinstance(raw_tied, list):
+            # Transformers 4.x lists tied names without their targets. Infer a
+            # target only when exactly one other local tensor shares its shape.
+            for name in raw_tied:
+                if not isinstance(name, str) or name not in shapes:
+                    continue
+                candidates = [
+                    other
+                    for other, shape in shapes.items()
+                    if other != name and shape == shapes[name]
+                ]
+                if len(candidates) == 1:
+                    tied[name] = candidates[0]
+        return shapes, tied
 
     @staticmethod
     def _model_dir(args: Mapping[str, Any]) -> str:

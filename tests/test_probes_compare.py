@@ -74,6 +74,37 @@ def test_empty_remote_metadata_is_not_applicable() -> None:
     assert "no tensors" in result["detail"]["reason"]
 
 
+def test_tied_local_weight_is_ignored_when_target_is_remote() -> None:
+    result = compare_state_shapes(
+        {"proj_out.weight": (8, 4), "decoder.embed_tokens.weight": (8, 4)},
+        {"decoder.embed_tokens.weight": (8, 4)},
+        tied_weights={"proj_out.weight": "decoder.embed_tokens.weight"},
+    )
+
+    assert result["verdict"] == "match"
+    assert result["detail"]["ignored_tied_weights"] == ["proj_out.weight"]
+
+
+def test_weight_norm_parametrization_names_are_normalized() -> None:
+    prefix = "encoder.pos_conv_embed.conv"
+    result = compare_state_shapes(
+        {
+            f"{prefix}.parametrizations.weight.original0": (8, 1, 4),
+            f"{prefix}.parametrizations.weight.original1": (8, 1, 4),
+        },
+        {
+            f"{prefix}.weight_g": (8, 1, 4),
+            f"{prefix}.weight_v": (8, 1, 4),
+        },
+    )
+
+    assert result["verdict"] == "match"
+    assert result["detail"]["normalized_renames"] == {
+        f"{prefix}.parametrizations.weight.original0": f"{prefix}.weight_g",
+        f"{prefix}.parametrizations.weight.original1": f"{prefix}.weight_v",
+    }
+
+
 def test_shape_values_may_be_lists() -> None:
     result = compare_state_shapes(
         {"encoder.weight": (4, 8)},

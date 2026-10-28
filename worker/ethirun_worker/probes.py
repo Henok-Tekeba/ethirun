@@ -24,20 +24,51 @@ def _shape_tuple(shape: Sequence[int]) -> tuple[int, ...]:
     return tuple(int(dimension) for dimension in shape)
 
 
+def _normalize_known_rename(name: str) -> str:
+    """Map newer parametrization names back to legacy weight-norm names."""
+    suffixes = (
+        (".parametrizations.weight.original0", ".weight_g"),
+        (".parametrizations.weight.original1", ".weight_v"),
+    )
+    for source, target in suffixes:
+        if name.endswith(source):
+            return name[: -len(source)] + target
+    return name
+
+
 def compare_state_shapes(
     local: Mapping[str, Sequence[int]],
     remote: Mapping[str, Sequence[int]],
+    *,
+    tied_weights: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Compare a meta model state dict with safetensors metadata.
 
     Returns one of ``match``, ``match_with_prefix`` or ``mismatch`` plus bounded
-    diagnostic samples. Tied/omitted weights are reported as a mismatch for a
-    human to investigate, never as a hard failure.
+    diagnostic samples. Local tensors tied to a tensor that is present remotely
+    are dropped and reported as ``ignored_tied_weights``.
     """
     if not remote:
         return {
             "verdict": "not_applicable",
             "detail": {"reason": "safetensors metadata contains no tensors"},
+        }
+
+    effective_local = dict(local)
+    ignored_tied: list[str] = []
+    for name, target in (tied_weights or {}).items():
+        if name in effective_local and name not in remote and target in remote:
+            effective_local.pop(name)
+            ignored_tied.append(name)
+
+    renamed = {
+        name: _normalize_known_rename(name)
+        for name in effective_local
+        if _normalize_known_rename(name) != name
+    }
+    if renamed:
+        effective_local = {
+            renamed.get(name, name): shape for name, shape in effective_local.items()
         }
 
     pairs = sorted(
@@ -52,7 +83,8 @@ def compare_state_shapes(
     aligned: tuple[str, str, dict[str, tuple[int, ...]], dict[str, tuple[int, ...]]] | None = None
     for local_prefix, remote_prefix in pairs:
         normalized_local = {
-            _strip_prefix(name, local_prefix): _shape_tuple(shape) for name, shape in local.items()
+            _strip_prefix(name, local_prefix): _shape_tuple(shape)
+            for name, shape in effective_local.items()
         }
         normalized_remote = {
             _strip_prefix(name, remote_prefix): _shape_tuple(shape)
@@ -63,8 +95,8 @@ def compare_state_shapes(
             break
 
     if aligned is None:
-        missing_in_remote = sorted(set(local) - set(remote))
-        missing_in_local = sorted(set(remote) - set(local))
+        missing_in_remote = sorted(set(effective_local) - set(remote))
+        missing_in_local = sorted(set(remote) - set(effective_local))
         return {
             "verdict": "mismatch",
             "detail": {
@@ -74,6 +106,8 @@ def compare_state_shapes(
                 "missing_in_local": missing_in_local[:20],
                 "missing_in_remote_count": len(missing_in_remote),
                 "missing_in_local_count": len(missing_in_local),
+                "ignored_tied_weights": ignored_tied,
+                "normalized_renames": renamed,
             },
         }
 
@@ -102,5 +136,7 @@ def compare_state_shapes(
             "remote_prefix": remote_prefix,
             "shape_mismatch_count": len(mismatches),
             "shape_mismatches": mismatches[:20],
+            "ignored_tied_weights": ignored_tied,
+            "normalized_renames": renamed,
         },
     }

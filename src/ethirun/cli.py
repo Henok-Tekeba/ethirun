@@ -9,9 +9,17 @@ import typer
 from rich.console import Console
 
 from ethirun import __version__
+from ethirun.envs import DEFAULT_ENVS_DIR
 from ethirun.inspector import DEFAULT_CACHE_DIR, InspectionError, Inspector
-from ethirun.schemas import Report, Rung
+from ethirun.models import DEFAULT_MODELS_DIR
+from ethirun.schemas import Recipe, Report, Rung, StatusLadder
 from ethirun.store import dumps_report_json
+from ethirun.workflow import (
+    DEFAULT_RECIPES_DIR,
+    build_model,
+    plan_model,
+    verify_model,
+)
 
 app = typer.Typer(
     name="ethirun",
@@ -173,6 +181,218 @@ def inspect(
         return
 
     _print_summary(report, output)
+
+
+def _print_ladder(status: StatusLadder) -> None:
+    for rung in (
+        Rung.INSPECTED,
+        Rung.RESOLVED,
+        Rung.INSTALLED,
+        Rung.IMPORTS,
+        Rung.CONSTRUCTS,
+        Rung.WEIGHTS_COMPATIBLE,
+        Rung.LOADS,
+        Rung.TRANSCRIBES,
+        Rung.ACCURACY_CHECKED,
+    ):
+        state = status.state_of(rung)
+        colour = {
+            "passed": "green",
+            "failed": "red",
+            "not_applicable": "dim",
+            "untested": "yellow",
+        }[state.value]
+        console.print(f"  {rung.value:20} [{colour}]{state.value}[/{colour}]")
+
+
+def _print_recipe(recipe: Recipe, recipe_dir: Path) -> None:
+    console.print(f"[bold]{recipe.model.repo}[/bold] @ [cyan]{recipe.model.revision}[/cyan]")
+    console.print(f"Recipe: [cyan]{recipe_dir}[/cyan]")
+    console.print(f"Family: {recipe.model.family}")
+    console.print(
+        f"Runtime: Python {recipe.runtime.python}, candidate {recipe.resolution.candidate}"
+    )
+    _print_ladder(recipe.status)
+
+
+@app.command()
+def plan(
+    repo: Annotated[
+        str,
+        typer.Argument(
+            help="Hugging Face repo, or org/model@revision.",
+            metavar="REPO",
+        ),
+    ],
+    revision: Annotated[
+        str | None,
+        typer.Option("--revision", "-r", help="Revision to resolve and pin."),
+    ] = None,
+    recipes_dir: Annotated[
+        Path,
+        typer.Option("--recipes-dir", help="Directory for committed recipes."),
+    ] = DEFAULT_RECIPES_DIR,
+    cache_dir: Annotated[
+        Path | None,
+        typer.Option("--cache-dir", help="Inspection metadata cache."),
+    ] = None,
+    python_b: Annotated[
+        str,
+        typer.Option("--python-b", help="Alternative Python for candidate B."),
+    ] = "3.12",
+    max_python_bytes: Annotated[
+        int,
+        typer.Option("--max-python-bytes", min=1, help="Python scan size cap."),
+    ] = 256 * 1024,
+) -> None:
+    """Stages 0-2: inspect, resolve candidate lockfiles, and write a recipe."""
+    repo_name, resolved_revision = _split_revision(repo, revision)
+    try:
+        result = plan_model(
+            repo_name,
+            revision=resolved_revision,
+            recipes_dir=recipes_dir,
+            cache_dir=cache_dir,
+            python_b=python_b,
+            max_python_bytes=max_python_bytes,
+        )
+    except Exception as exc:
+        console.print(f"[red]plan failed:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    selected = result.resolution.selected
+    assert selected is not None
+    console.print(
+        f"[bold]Planned[/bold] {result.recipe.model.repo} @ "
+        f"[cyan]{result.recipe.model.revision}[/cyan]"
+    )
+    console.print(
+        f"Candidate {selected.candidate.key} "
+        f"(Python {selected.candidate.python}) -> requirements.lock"
+    )
+    _print_recipe(result.recipe, result.recipe_dir)
+
+
+@app.command()
+def build(
+    repo: Annotated[
+        str,
+        typer.Argument(
+            help="Hugging Face repo, or org/model@revision.",
+            metavar="REPO",
+        ),
+    ],
+    revision: Annotated[
+        str | None,
+        typer.Option("--revision", "-r", help="Pinned recipe revision."),
+    ] = None,
+    recipes_dir: Annotated[
+        Path,
+        typer.Option("--recipes-dir", help="Directory for committed recipes."),
+    ] = DEFAULT_RECIPES_DIR,
+    cache_dir: Annotated[
+        Path | None,
+        typer.Option("--cache-dir", help="Inspection metadata cache."),
+    ] = None,
+    envs_dir: Annotated[
+        Path | None,
+        typer.Option("--envs-dir", help=f"Worker env cache (default: {DEFAULT_ENVS_DIR})."),
+    ] = None,
+) -> None:
+    """Stages 3-4: build the worker env and run P1-P5."""
+    repo_name, resolved_revision = _split_revision(repo, revision)
+    try:
+        result = build_model(
+            repo_name,
+            revision=resolved_revision,
+            recipes_dir=recipes_dir,
+            cache_dir=cache_dir,
+            envs_dir=envs_dir,
+        )
+    except Exception as exc:
+        console.print(f"[red]build failed:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"[bold]Built[/bold] env {result.env.env_hash[:12]} "
+        f"({'reused' if result.env.cached else 'new'}) at {result.env.env_dir}"
+    )
+    _print_recipe(result.recipe, result.recipe_dir)
+    if result.error is not None:
+        console.print(f"[red]probe failure:[/red] {result.error}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def verify(
+    repo: Annotated[
+        str,
+        typer.Argument(
+            help="Hugging Face repo, or org/model@revision.",
+            metavar="REPO",
+        ),
+    ],
+    audio: Annotated[
+        Path,
+        typer.Option(
+            "--audio",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            help="Smoke-test audio clip.",
+        ),
+    ],
+    revision: Annotated[
+        str | None,
+        typer.Option("--revision", "-r", help="Pinned recipe revision."),
+    ] = None,
+    language: Annotated[
+        str | None,
+        typer.Option("--language", help="Language hint (e.g. am)."),
+    ] = None,
+    device: Annotated[
+        str,
+        typer.Option("--device", help="Worker device (cpu, cuda, mps)."),
+    ] = "cpu",
+    recipes_dir: Annotated[
+        Path,
+        typer.Option("--recipes-dir", help="Directory for committed recipes."),
+    ] = DEFAULT_RECIPES_DIR,
+    envs_dir: Annotated[
+        Path | None,
+        typer.Option("--envs-dir", help=f"Worker env cache (default: {DEFAULT_ENVS_DIR})."),
+    ] = None,
+    models_dir: Annotated[
+        Path | None,
+        typer.Option("--models-dir", help=f"Weight cache (default: {DEFAULT_MODELS_DIR})."),
+    ] = None,
+) -> None:
+    """Stages 5-6: download weights, load, and transcribe a smoke clip."""
+    repo_name, resolved_revision = _split_revision(repo, revision)
+    try:
+        result = verify_model(
+            repo_name,
+            audio_path=audio,
+            revision=resolved_revision,
+            recipes_dir=recipes_dir,
+            envs_dir=envs_dir,
+            models_dir=models_dir,
+            language=language,
+            device=device,
+        )
+    except Exception as exc:
+        console.print(f"[red]verify failed:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"[bold]Verified[/bold] {result.recipe.model.repo} with env {result.env.env_hash[:12]}"
+    )
+    _print_recipe(result.recipe, result.recipe_dir)
+    if result.verification.error is not None:
+        console.print(f"[red]verification failure:[/red] {result.verification.error}")
+        raise typer.Exit(code=1)
+    if result.verification.text:
+        console.print(f"Transcript: {result.verification.text}")
 
 
 def main() -> None:
