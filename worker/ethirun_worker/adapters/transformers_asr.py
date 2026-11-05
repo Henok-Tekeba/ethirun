@@ -240,6 +240,12 @@ class TransformersASRAdapter:
             self._metadata_files = {}
             return {}
         except Exception as exc:
+            # huggingface_hub >= 1.x raises NotASafetensorsRepoError for repos
+            # that only publish .bin weights. That is a not-applicable case, not
+            # a probe failure. Check by name so old hub versions keep working.
+            if type(exc).__name__ == "NotASafetensorsRepoError":
+                self._metadata_files = {}
+                return {}
             raise ProbeError(
                 f"could not fetch safetensors metadata for {repo_id}@{revision}: {exc}"
             ) from exc
